@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+publish/
+TestResults/
+*.user
+
+# Secrets. These must never be committed.
+appsettings.Development.json
+appsettings.Local.json
+*.pfx
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

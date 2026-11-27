@@ -1,0 +1,95 @@
+name: CI
+
+# Runs on every push to main and on every pull request that targets main.
+# Branch protection on main should require this check to pass before merging.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# A new push to the same branch cancels the run already in progress,
+# so the queue does not fill up with stale builds.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore AcuPay.sln
+
+      - name: Build
+        run: dotnet build AcuPay.sln --configuration Release --no-restore
+
+      # If a test fails, this step fails, the job fails, and the merge button locks.
+      # That is the whole point. Prove it once with a deliberately broken test.
+      - name: Test
+        run: dotnet test AcuPay.sln --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: ignore
+
+      - name: Publish the API
+        run: dotnet publish src/AcuPay.Api/AcuPay.Api.csproj --configuration Release --no-build --output ./publish
+
+      - name: Upload the published build
+        uses: actions/upload-artifact@v4
+        with:
+          name: acupay-api
+          path: ./publish
+          retention-days: 7
+
+  secret-scan:
+    name: No secrets in the repo
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # A deliberately simple guard. It catches the two mistakes this project
+      # actually sees: a connection string pasted into appsettings.json, and a
+      # committed appsettings.Development.json.
+      - name: Fail if a connection string was committed
+        run: |
+          if git ls-files | grep -q 'appsettings.Development.json$'; then
+            echo "::error::appsettings.Development.json is committed. It belongs in .gitignore."
+            exit 1
+          fi
+
+          if grep -rniE '(Password=|Pwd=|User Id=sa)' --include='*.json' --include='*.cs' --include='*.yml' . ; then
+            echo "::error::Something that looks like a credential is committed. Move it to user-secrets or a GitHub secret."
+            exit 1
+          fi
+
+          echo "No committed credentials found."

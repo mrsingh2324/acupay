@@ -1,0 +1,10 @@
+{
+  "//": "Copy this to appsettings.Development.json ONLY if you cannot use user-secrets.",
+  "//2": "appsettings.Development.json is in .gitignore. Never commit real values.",
+  "ConnectionStrings": {
+    "AcuPay": "Server=localhost;Database=AcuPay;Trusted_Connection=True;TrustServerCertificate=True;"
+  },
+  "Jwt": {
+    "Key": "replace-this-with-at-least-32-characters-of-random-text"
+  }
+}
